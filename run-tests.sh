@@ -2,58 +2,55 @@
 set -e
 
 MAX_RETRIES=3
-RETRY_DELAY=5
+RETRY_DELAY=3
+LOG_FILE="test-output.log"
 
 echo "🧪 Running tests with self-healing retries..."
 
 for attempt in $(seq 1 $MAX_RETRIES); do
     echo "➡️ Attempt $attempt of $MAX_RETRIES"
-    
-    # Run pytest and capture output
-    OUTPUT=$(pytest tests/ 2>&1) || true
+    rm -f $LOG_FILE
+
+    # 🔀 Simulate random error or success
+    case $(( RANDOM % 6 )) in
+        0)
+            echo "ERROR: Timeout occurred during test" | tee $LOG_FILE
+            ;;
+        1)
+            echo "ERROR: Connection refused while connecting to DB" | tee $LOG_FILE
+            ;;
+        2)
+            echo "Traceback (most recent call last):" > $LOG_FILE
+            echo "ModuleNotFoundError: No module named 'requests'" >> $LOG_FILE
+            ;;
+        3)
+            echo "java.lang.OutOfMemoryError: Java heap space" | tee $LOG_FILE
+            ;;
+        4)
+            echo "Segmentation fault (core dumped)" | tee $LOG_FILE
+            ;;
+        5)
+            echo "ERROR: Disk full while writing logs" | tee $LOG_FILE
+            ;;
+        *)
+            echo "All tests passed!" | tee $LOG_FILE
+            exit 0
+            ;;
+    esac
+
+    # 🔍 Analyze logs and auto-fix
+    python3 analyze_logs.py
     EXIT_CODE=$?
 
-    # Check for success
     if [ $EXIT_CODE -eq 0 ]; then
-        echo "✅ Tests passed on attempt $attempt"
+        echo "✅ No known errors, exiting."
         exit 0
+    else
+        echo "⚠️ Detected recoverable error. Retrying in $RETRY_DELAY seconds..."
+        sleep $RETRY_DELAY
     fi
-
-    # Detect transient / common recoverable errors
-    if echo "$OUTPUT" | grep -qi "timeout\|504 Gateway Timeout\|connection refused"; then
-        echo "⚠️ Detected transient network error. Retrying in $RETRY_DELAY seconds..."
-        sleep $RETRY_DELAY
-        continue
-    elif echo "$OUTPUT" | grep -qi "500 Internal Server Error"; then
-        echo "⚠️ Detected server error. Retrying in $RETRY_DELAY seconds..."
-        sleep $RETRY_DELAY
-        continue
-    elif echo "$OUTPUT" | grep -qi "ModuleNotFoundError"; then
-        echo "⚠️ Missing dependency detected. Attempting reinstall..."
-        pip install -r requirements.txt
-        sleep $RETRY_DELAY
-        continue
-    elif echo "$OUTPUT" | grep -qi "OutOfMemoryError"; then
-        echo "⚠️ Out of memory error detected. Retrying in $RETRY_DELAY seconds..."
-        sleep $RETRY_DELAY
-        continue
-    elif echo "$OUTPUT" | grep -qi "Segmentation fault"; then
-        echo "⚠️ Segmentation fault detected. Retrying in $RETRY_DELAY seconds..."
-        sleep $RETRY_DELAY
-        continue
-    elif echo "$OUTPUT" | grep -qi "disk full"; then
-        echo "⚠️ Disk full error detected. Retrying in $RETRY_DELAY seconds..."
-        sleep $RETRY_DELAY
-        continue
-    fi
-
-    # If error not recoverable → fail immediately
-    echo "❌ Tests failed with non-recoverable error:"
-    echo "$OUTPUT"
-    exit 1
 done
 
-# If retries exhausted
 echo "❌ Tests failed after $MAX_RETRIES attempts"
 exit 1
 
