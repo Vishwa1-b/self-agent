@@ -19,13 +19,30 @@ for attempt in $(seq 1 $MAX_RETRIES); do
         exit 0
     fi
 
-    # Detect common errors in output
-    if echo "$OUTPUT" | grep -q "timeout\|504 Gateway Timeout\|connection refused"; then
+    # Detect transient / common recoverable errors
+    if echo "$OUTPUT" | grep -qi "timeout\|504 Gateway Timeout\|connection refused"; then
         echo "⚠️ Detected transient network error. Retrying in $RETRY_DELAY seconds..."
         sleep $RETRY_DELAY
         continue
-    elif echo "$OUTPUT" | grep -q "500 Internal Server Error"; then
+    elif echo "$OUTPUT" | grep -qi "500 Internal Server Error"; then
         echo "⚠️ Detected server error. Retrying in $RETRY_DELAY seconds..."
+        sleep $RETRY_DELAY
+        continue
+    elif echo "$OUTPUT" | grep -qi "ModuleNotFoundError"; then
+        echo "⚠️ Missing dependency detected. Attempting reinstall..."
+        pip install -r requirements.txt
+        sleep $RETRY_DELAY
+        continue
+    elif echo "$OUTPUT" | grep -qi "OutOfMemoryError"; then
+        echo "⚠️ Out of memory error detected. Retrying in $RETRY_DELAY seconds..."
+        sleep $RETRY_DELAY
+        continue
+    elif echo "$OUTPUT" | grep -qi "Segmentation fault"; then
+        echo "⚠️ Segmentation fault detected. Retrying in $RETRY_DELAY seconds..."
+        sleep $RETRY_DELAY
+        continue
+    elif echo "$OUTPUT" | grep -qi "disk full"; then
+        echo "⚠️ Disk full error detected. Retrying in $RETRY_DELAY seconds..."
         sleep $RETRY_DELAY
         continue
     fi

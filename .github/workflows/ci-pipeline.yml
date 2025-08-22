@@ -41,6 +41,19 @@ jobs:
           elif grep -i "connection refused" test-output.log; then
             echo "⚠️ Network Error detected – retrying..."
             exit 1
+          elif grep -i "ModuleNotFoundError" test-output.log; then
+            echo "⚠️ Missing dependency detected – retrying after reinstall..."
+            pip install -r requirements.txt
+            exit 1
+          elif grep -i "OutOfMemoryError" test-output.log; then
+            echo "⚠️ Out of memory error detected – retrying..."
+            exit 1
+          elif grep -i "Segmentation fault" test-output.log; then
+            echo "⚠️ Segmentation fault detected – retrying..."
+            exit 1
+          elif grep -i "disk full" test-output.log; then
+            echo "⚠️ Disk full error detected – retrying..."
+            exit 1
           else
             echo "✅ No known errors detected."
           fi
