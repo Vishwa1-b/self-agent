@@ -5,43 +5,43 @@ LOG_FILE="test-output.log"
 
 echo "🔍 Checking logs for known errors..."
 
-# Read log file
+# Read log content
+if [ ! -f "$LOG_FILE" ]; then
+    echo "⚠️ Log file not found: $LOG_FILE"
+    exit 1
+fi
+
 LOG_CONTENT=$(cat "$LOG_FILE" | tr '[:upper:]' '[:lower:]')
 
-# Network errors
-if echo "$LOG_CONTENT" | grep -q "connection refused\|timeout\|504 gateway timeout"; then
-    echo "⚠️ Network/Timeout Error detected – attempting auto-fix..."
-    # Example network fix (simulate restart)
-    sudo systemctl restart networking || true
-    sleep 5
-fi
-
-# Dependency errors
+# Auto-fix errors
 if echo "$LOG_CONTENT" | grep -q "modulenotfounderror"; then
-    DEP_NAME=$(grep -oP "(?<=No module named ')[^']+" "$LOG_FILE")
-    echo "⚠️ Missing dependency detected: $DEP_NAME – installing..."
-    pip install "$DEP_NAME" || true
+    echo "⚠️ Missing dependency detected – installing..."
+    python -m pip install requests || true
+fi
+
+if echo "$LOG_CONTENT" | grep -q "timeout"; then
+    echo "⚠️ Timeout Error detected – adding delay..."
     sleep 5
 fi
 
-# Out of memory
-if echo "$LOG_CONTENT" | grep -q "outofmemoryerror\|java\.lang\.outofmemoryerror"; then
-    echo "⚠️ Out of memory detected – cleaning cache..."
+if echo "$LOG_CONTENT" | grep -q "connection refused"; then
+    echo "⚠️ Network Error detected – retrying network operations..."
+    sudo systemctl restart networking || true
+fi
+
+if echo "$LOG_CONTENT" | grep -q "outofmemoryerror"; then
+    echo "⚠️ Out of memory error detected – simulating memory cleanup..."
     echo 3 | sudo tee /proc/sys/vm/drop_caches || true
     sleep 5
 fi
 
-# Segmentation fault
 if echo "$LOG_CONTENT" | grep -q "segmentation fault"; then
-    echo "⚠️ Segmentation fault detected – retrying..."
-    sleep 5
+    echo "⚠️ Segmentation fault detected – cannot auto-fix"
 fi
 
-# Disk full
 if echo "$LOG_CONTENT" | grep -q "disk full"; then
-    echo "⚠️ Disk full detected – cleaning /tmp..."
+    echo "⚠️ Disk full error detected – cleaning /tmp..."
     rm -rf /tmp/* || true
-    sleep 5
 fi
 
 echo "✅ Analyzer completed."

@@ -8,6 +8,13 @@ FAKE_ERROR_FILE=".fake_error_done"
 
 echo "🧪 Running tests with self-healing retries..."
 
+# Ensure pytest is installed
+if ! command -v pytest &> /dev/null; then
+    echo "⚠️ pytest not found – installing automatically..."
+    python -m pip install --upgrade pip
+    python -m pip install pytest
+fi
+
 for attempt in $(seq 1 $MAX_RETRIES); do
     echo "➡️ Attempt $attempt of $MAX_RETRIES"
 
