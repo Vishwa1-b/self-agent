@@ -1,11 +1,7 @@
-#!/bin/bash
-set -e  # exit immediately if a command fails
+#!/usr/bin/env bash
+set -e
 
-echo "🚀 Starting deployment..."
-
-# Example: build docker image & deploy
-docker build -t myapp:latest .
-docker run -d -p 8080:8080 --name myapp myapp:latest
-
-echo "✅ Deployment successful!"
+echo "🚀 Deploying application..."
+# Replace with your real deployment commands
+echo "✅ Deployment succeeded."
 
