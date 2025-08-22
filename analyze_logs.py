@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-import sys, re, subprocess
+import sys
+import re
+import subprocess
 
 LOG_FILE = "test-output.log"
 
@@ -12,58 +14,55 @@ def detect_and_fix():
         with open(LOG_FILE, "r") as f:
             log_content = f.read().lower()
     except FileNotFoundError:
-        print("⚠️ No log file found.")
+        print("❌ Log file not found.")
         sys.exit(1)
 
-    # Error detection patterns and fixes
+    # Error detection patterns + GitHub Actions friendly fixes
     error_patterns = {
-        "timeout": {
-            "msg": "⚠️ Timeout Error detected – retrying...",
-            "fix": lambda: None  # just retry
-        },
-        "connection refused": {
-            "msg": "⚠️ Network Error detected – restarting network services...",
-            "fix": lambda: run_cmd("sudo systemctl restart networking || true")
-        },
-        "modulenotfounderror": {
-            "msg": "⚠️ Missing dependency detected – installing package...",
-            "fix": lambda: fix_missing_module(log_content)
-        },
-        "outofmemoryerror": {
-            "msg": "⚠️ Out of memory error detected – freeing memory...",
-            "fix": lambda: run_cmd("sudo sync; sudo sysctl -w vm.drop_caches=3 || true")
-        },
-        "segmentation fault": {
-            "msg": "⚠️ Segmentation fault detected – restarting process...",
-            "fix": lambda: run_cmd("pkill -f python || true")
-        },
-        "disk full": {
-            "msg": "⚠️ Disk full error detected – cleaning temp files...",
-            "fix": lambda: run_cmd("rm -rf /tmp/* || true")
-        }
+        "timeout": "⚠️ Timeout Error detected – adding delay & retrying...",
+        "connection refused": "⚠️ Network Error detected – retrying after short delay...",
+        "modulenotfounderror": "⚠️ Missing dependency detected – reinstalling dependency...",
+        "outofmemoryerror": "⚠️ Out of memory error detected – simulating memory cleanup...",
+        "segmentation fault": "⚠️ Segmentation fault detected – retrying...",
+        "disk full": "⚠️ Disk full error detected – simulating cleanup..."
     }
 
-    detected = False
-    for pattern, action in error_patterns.items():
+    for pattern, message in error_patterns.items():
         if re.search(pattern, log_content):
-            print(action["msg"])
-            action["fix"]()
-            detected = True
+            print(message)
 
-    if detected:
-        sys.exit(1)  # Exit 1 so GitHub Actions retries
-    else:
-        print("✅ No known errors detected.")
-        sys.exit(0)
+            # GitHub Actions–safe fixes
+            if pattern == "timeout":
+                run_cmd("sleep 5")   # simulate retry after wait
 
-def fix_missing_module(log_content: str):
-    """Extract missing module from log and install it"""
-    pkg_match = re.search(r"no module named ['\"]?([a-zA-Z0-9_\-]+)", log_content)
-    if pkg_match:
-        pkg = pkg_match.group(1)
-        run_cmd(f"pip install {pkg}")
-    else:
-        print("⚠️ Could not detect module name from error log.")
+            elif pattern == "connection refused":
+                run_cmd("ping -c 1 8.8.8.8 || true")  # check connectivity
+                run_cmd("sleep 5")   # wait before retry
+
+            elif pattern == "modulenotfounderror":
+                # Try to install missing module dynamically (instead of requirements.txt)
+                missing = re.findall(r"no module named '([^']+)'", log_content)
+                if missing:
+                    for pkg in missing:
+                        print(f"📦 Installing missing package: {pkg}")
+                        run_cmd(f"pip install {pkg}")
+
+            elif pattern == "outofmemoryerror":
+                run_cmd("echo 3 | sudo tee /proc/sys/vm/drop_caches || true")  # safe fallback
+                run_cmd("sleep 5")
+
+            elif pattern == "segmentation fault":
+                run_cmd("sleep 3")  # just retry
+
+            elif pattern == "disk full":
+                run_cmd("df -h")  # show usage
+                run_cmd("rm -rf ~/.cache || true")  # free some space
+
+            # Exit with failure so workflow retries
+            sys.exit(1)
+
+    print("✅ No known errors detected.")
+    sys.exit(0)
 
 if __name__ == "__main__":
     detect_and_fix()
