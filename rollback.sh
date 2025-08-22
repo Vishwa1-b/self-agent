@@ -1,14 +1,18 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 echo "⚠️ Deployment failed. Rolling back..."
 
-# Stop the failing container
-docker stop myapp || true
-docker rm myapp || true
+# Stop and remove old containers safely
+docker rm -f myapp || true
 
-# Rollback to last stable image (assume tagged as stable)
-docker run -d -p 8080:8080 --name myapp myapp:stable
-
-echo "✅ Rollback complete. Running stable version."
+# Deploy stable version
+if docker pull myapp:stable; then
+    echo "✅ Pulled stable version of app"
+    docker run -d --name myapp -p 8080:8080 myapp:stable
+    echo "✅ Rollback successful – running stable version"
+else
+    echo "❌ Rollback failed – could not pull stable image"
+    exit 1
+fi
 

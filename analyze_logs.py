@@ -1,54 +1,61 @@
-#!/usr/bin/env python3
-import sys
-import re
-import subprocess
+#!/usr/bin/env bash
+set -e
 
-LOG_FILE = "test-output.log"
+LOG_FILE="test-output.log"
 
-def run_cmd(cmd):
-    print(f"👉 Running: {cmd}")
-    subprocess.run(cmd, shell=True, check=False)
+if [ ! -f "$LOG_FILE" ]; then
+    echo "❌ No log file found ($LOG_FILE)"
+    exit 1
+fi
 
-def detect_and_fix():
-    with open(LOG_FILE, "r") as f:
-        log_content = f.read().lower()
+LOG_CONTENT=$(cat "$LOG_FILE" | tr '[:upper:]' '[:lower:]')
 
-    # Common error patterns
-    error_patterns = {
-        "timeout": "⚠️ Timeout Error detected – adding delay & retrying...",
-        "connection refused": "⚠️ Network Error detected – restarting network services...",
-        "outofmemoryerror": "⚠️ Out of memory error detected – simulating cleanup...",
-        "segmentation fault": "⚠️ Segmentation fault detected – retrying...",
-        "disk full": "⚠️ Disk full error detected – simulating cleanup..."
-    }
+handle_error() {
+    local pattern="$1"
+    local message="$2"
+    local action="$3"
 
-    # Check generic patterns first
-    for pattern, message in error_patterns.items():
-        if re.search(pattern, log_content):
-            print(message)
-            if pattern == "timeout":
-                run_cmd("sleep 5")
-            elif pattern == "connection refused":
-                run_cmd("sudo systemctl restart networking || true")
-            elif pattern == "outofmemoryerror":
-                run_cmd("echo 3 | sudo tee /proc/sys/vm/drop_caches || true")
-                run_cmd("sleep 5")
-            elif pattern == "disk full":
-                run_cmd("rm -rf /tmp/* || true")
-            # Exit with failure so retry happens
-            sys.exit(1)
+    if echo "$LOG_CONTENT" | grep -q "$pattern"; then
+        echo "$message"
+        echo "👉 Running: $action"
+        eval "$action"
+        exit 1  # force retry
+    fi
+}
 
-    # 🔍 Detect missing dependencies dynamically
-    match = re.search(r"modulenotfounderror:\s*no module named '([\w\-]+)'", log_content, re.I)
-    if match:
-        missing_pkg = match.group(1)
-        print(f"⚠️ Missing dependency detected: {missing_pkg} – installing automatically...")
-        run_cmd(f"pip install {missing_pkg}")
-        sys.exit(1)
+# Error detection & auto-fix
+handle_error "timeout" \
+    "⚠️ Timeout Error detected – adding delay & retrying..." \
+    "sleep 5"
 
-    print("✅ No known errors detected.")
-    sys.exit(0)
+handle_error "connection refused" \
+    "⚠️ Network Error detected – restarting network services..." \
+    "sudo systemctl restart networking || true"
 
-if __name__ == "__main__":
-    detect_and_fix()
+handle_error "modulenotfounderror" \
+    "⚠️ Missing dependency detected – auto-installing..." \
+    "pip install $(grep -oP '(?<=No module named ).*' $LOG_FILE | tr -d \"'\") || true"
+
+handle_error "outofmemoryerror" \
+    "⚠️ Out of memory detected – cleaning up memory caches..." \
+    "echo 3 | sudo tee /proc/sys/vm/drop_caches || true && sleep 5"
+
+handle_error "segmentation fault" \
+    "⚠️ Segmentation fault detected – retrying..." \
+    "sleep 5"
+
+handle_error "disk full" \
+    "⚠️ Disk full detected – cleaning temporary files..." \
+    "rm -rf /tmp/* || true"
+
+handle_error "image not found" \
+    "⚠️ Missing Docker image – pulling stable fallback image..." \
+    "docker pull myapp:stable || true"
+
+handle_error "pull access denied" \
+    "⚠️ Docker registry access denied – logging in with credentials..." \
+    "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin || true"
+
+echo "✅ No known errors detected in logs."
+exit 0
 
